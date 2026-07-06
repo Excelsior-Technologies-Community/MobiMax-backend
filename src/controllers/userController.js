@@ -1,6 +1,8 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import db from '../config/db.js';
+import { sendWelcomeEmail } from '../services/emailService.js';
+import { getIO } from '../socket.js';
 
 export const registerUser = async (req, res) => {
   const { name, email, password } = req.body;
@@ -25,6 +27,18 @@ export const registerUser = async (req, res) => {
     const payload = { id: result.insertId, name, email, role: 'user' };
     const token = jwt.sign(payload, process.env.JWT_SECRET || 'fallback_super_secret_key_123', { expiresIn: '24h' });
 
+    // Send Welcome Email asynchronously
+    sendWelcomeEmail(email, name, 'user');
+
+    // Emit socket event
+    getIO().emit('user_registered', { 
+      id: result.insertId, 
+      name, 
+      email, 
+      status: 'active', 
+      created_at: new Date().toISOString() 
+    });
+
     res.status(201).json({ status: 'success', message: 'User registered successfully', token, user: payload });
   } catch (error) {
     console.error('Registration error:', error);
@@ -42,6 +56,11 @@ export const loginUser = async (req, res) => {
     }
 
     const user = users[0];
+
+    if (user.status === 'suspended') {
+      return res.status(403).json({ status: 'error', message: 'Account is suspended' });
+    }
+
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {

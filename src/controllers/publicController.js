@@ -1,0 +1,39 @@
+import db from '../config/db.js';
+
+export const getPublicAdvertisements = async (req, res) => {
+  try {
+    // 1. Fetch active ads
+    const [ads] = await db.execute('SELECT image_url, link_url FROM advertisements WHERE is_active = 1 ORDER BY sort_order ASC, created_at DESC');
+    
+    // 2. Fetch global settings
+    const [settingRows] = await db.execute('SELECT * FROM settings WHERE setting_key IN ("ad_duration", "ad_shuffle", "popup_enabled", "popup_delay", "popup_frequency")');
+    const settings = {
+      ad_duration: 5000,
+      ad_shuffle: 'false',
+      popup_enabled: 'true',
+      popup_delay: 1000,
+      popup_frequency: 'session'
+    };
+    
+    settingRows.forEach(row => {
+      settings[row.setting_key] = row.setting_value;
+    });
+
+    return res.status(200).json({ 
+      status: 'success', 
+      data: {
+        advertisements: ads,
+        settings: {
+          duration: parseInt(settings.ad_duration) || 5000,
+          shuffle: settings.ad_shuffle === 'true',
+          popup_enabled: settings.popup_enabled,
+          popup_delay: parseInt(settings.popup_delay) || 1000,
+          popup_frequency: settings.popup_frequency
+        }
+      } 
+    });
+  } catch (error) {
+    console.error('Error fetching public advertisements:', error);
+    return res.status(500).json({ status: 'error', message: 'Failed to fetch advertisements' });
+  }
+};
