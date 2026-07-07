@@ -79,3 +79,54 @@ export const loginPartner = async (req, res) => {
     res.status(500).json({ status: 'error', message: 'An error occurred during login' });
   }
 };
+
+export const getDashboardStats = async (req, res) => {
+  try {
+    // Optionally verify token if provided in header
+    let partnerId = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+        partnerId = decoded.id;
+      } catch (err) {
+        console.error('Invalid token', err);
+      }
+    }
+
+    // Return simulated dynamic data
+    // Randomize slightly so it looks dynamic on refresh
+    const randomEarnings = (Math.random() * 500 + 100).toFixed(2);
+    const randomOrders = Math.floor(Math.random() * 20) + 5;
+    
+    const simulatedData = {
+      todayEarnings: randomEarnings,
+      earningsGrowth: 14.5, // static for now
+      activeOrders: randomOrders,
+      newOrdersCount: 2,
+      rating: 4.8,
+      recentActivity: [
+        {
+          id: 1,
+          type: 'new_order',
+          title: 'New Order #8924',
+          description: 'Spicy Chicken Wrap, Fries x2',
+          time: '2 mins ago'
+        },
+        {
+          id: 2,
+          type: 'completed',
+          title: 'Order #8923 Completed',
+          description: 'Picked up by rider',
+          time: '15 mins ago'
+        }
+      ]
+    };
+
+    res.status(200).json({ status: 'success', data: simulatedData });
+  } catch (error) {
+    console.error('Dashboard stats error:', error);
+    res.status(500).json({ status: 'error', message: 'An error occurred while fetching stats' });
+  }
+};
