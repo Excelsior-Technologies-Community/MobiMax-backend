@@ -3,6 +3,9 @@ import bcrypt from 'bcrypt';
 import db from '../config/db.js';
 import { sendWelcomeEmail } from '../services/emailService.js';
 import { getIO } from '../socket.js';
+import { v2 as cloudinary } from 'cloudinary';
+import fs from 'fs';
+
 
 export const registerPartner = async (req, res) => {
   const { company, name, email, phone, password } = req.body;
@@ -128,5 +131,84 @@ export const getDashboardStats = async (req, res) => {
   } catch (error) {
     console.error('Dashboard stats error:', error);
     res.status(500).json({ status: 'error', message: 'An error occurred while fetching stats' });
+  }
+};
+
+export const getPartnerMe = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    
+    const [partners] = await db.execute('SELECT id, company, name, email, phone, status, aadhar_card, pan_card, partner_photo, store_name, store_category, store_address, store_city, store_pincode, aadhar_number, pan_number, store_logo FROM partners WHERE id = ?', [decoded.id]);
+    
+    if (partners.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Partner not found' });
+    }
+    
+    res.status(200).json({ status: 'success', partner: partners[0] });
+  } catch (error) {
+    console.error('getPartnerMe error:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to fetch partner data' });
+  }
+};
+
+export const uploadPartnerDocs = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+
+    const { store_name, store_category, store_address, store_city, store_pincode, aadhar_number, pan_number } = req.body;
+
+    if (!req.files || !req.files.aadhar_card || !req.files.pan_card || !req.files.partner_photo || !req.files.store_logo) {
+      return res.status(400).json({ status: 'error', message: 'All 4 documents (including store logo) are required' });
+    }
+
+    if (!store_name || !store_category || !store_address || !store_city || !store_pincode || !aadhar_number || !pan_number) {
+      return res.status(400).json({ status: 'error', message: 'All store and owner details are required' });
+    }
+
+    const uploadToCloudinary = async (fileArray, folder) => {
+      if (!fileArray || fileArray.length === 0) return null;
+      const file = fileArray[0];
+      try {
+        const result = await cloudinary.uploader.upload(file.path, { folder });
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        return result.secure_url;
+      } catch (err) {
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        throw err;
+      }
+    };
+
+    const aadharUrl = await uploadToCloudinary(req.files.aadhar_card, 'mobimax_partner_docs');
+    const panUrl = await uploadToCloudinary(req.files.pan_card, 'mobimax_partner_docs');
+    const photoUrl = await uploadToCloudinary(req.files.partner_photo, 'mobimax_partner_docs');
+    const logoUrl = await uploadToCloudinary(req.files.store_logo, 'mobimax_partner_docs');
+
+    await db.execute(
+      'UPDATE partners SET aadhar_card = ?, pan_card = ?, partner_photo = ?, store_name = ?, store_category = ?, store_address = ?, store_city = ?, store_pincode = ?, aadhar_number = ?, pan_number = ?, store_logo = ?, status = ? WHERE id = ?',
+      [aadharUrl, panUrl, photoUrl, store_name, store_category, store_address, store_city, store_pincode, aadhar_number, pan_number, logoUrl, 'under_review', partnerId]
+    );
+
+    getIO().emit('partner_status_updated', { id: partnerId, status: 'under_review' });
+
+    res.status(200).json({ 
+      status: 'success', 
+      message: 'Documents uploaded successfully. Waiting for admin approval.',
+      data: { status: 'under_review' }
+    });
+
+  } catch (error) {
+    console.error('uploadPartnerDocs error:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to upload documents' });
   }
 };

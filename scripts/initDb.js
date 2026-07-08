@@ -68,6 +68,17 @@ async function initDatabase() {
         phone VARCHAR(50) NOT NULL,
         password VARCHAR(255) NOT NULL,
         status VARCHAR(50) DEFAULT 'pending',
+        store_name VARCHAR(255) DEFAULT NULL,
+        store_category VARCHAR(100) DEFAULT NULL,
+        store_address TEXT DEFAULT NULL,
+        store_city VARCHAR(100) DEFAULT NULL,
+        store_pincode VARCHAR(20) DEFAULT NULL,
+        aadhar_number VARCHAR(50) DEFAULT NULL,
+        pan_number VARCHAR(50) DEFAULT NULL,
+        store_logo VARCHAR(500) DEFAULT NULL,
+        aadhar_card VARCHAR(500) DEFAULT NULL,
+        pan_card VARCHAR(500) DEFAULT NULL,
+        partner_photo VARCHAR(500) DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
