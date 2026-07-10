@@ -15,7 +15,10 @@ import {
   deleteAdvertisement,
   getSettings,
   updateSettings,
-  uploadImage
+  uploadImage,
+  getContactMessages,
+  updateContactMessageStatus,
+  replyToContactMessage
 } from '../controllers/adminController.js';
 
 const router = express.Router();
@@ -58,5 +61,10 @@ router.put('/settings', updateSettings);
 
 // Image Upload
 router.post('/upload', upload.single('image'), uploadImage);
+
+// Contact Messages
+router.get('/contact-messages', getContactMessages);
+router.put('/contact-messages/:id/status', updateContactMessageStatus);
+router.post('/contact-messages/:id/reply', replyToContactMessage);
 
 export default router;

@@ -356,3 +356,81 @@ export const sendPasswordResetEmail = async (email, name, resetLink, role) => {
     console.error('Error sending password reset email:', error);
   }
 };
+
+export const sendContactReplyEmail = async (email, name, replyMessage, originalMessage) => {
+  try {
+    const subject = 'Reply to your inquiry - MobiMax';
+      
+    const text = `Hi ${name},\n\nThank you for contacting MobiMax. Here is our reply to your recent message:\n\n${replyMessage}\n\nYour original message:\n"${originalMessage}"\n\nBest Regards,\nThe MobiMax Team`;
+
+    const getHtmlTemplate = (reply, original) => {
+      return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap');
+    
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f5f7; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+    .wrapper { width: 100%; background-color: #f4f5f7; padding: 60px 20px; box-sizing: border-box; }
+    .main-container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08); }
+    
+    .header { background: linear-gradient(135deg, #e26a1b 0%, #f97316 100%); padding: 40px 20px; text-align: center; position: relative; overflow: hidden; }
+    .header::after { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: url('data:image/svg+xml;utf8,<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" fill="rgba(255,255,255,0.05)"/></svg>') repeat; opacity: 0.5; }
+    .header-logo { position: relative; z-index: 1; font-size: 32px; font-weight: 800; color: #ffffff; margin: 0; letter-spacing: -1px; text-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+    
+    .content-area { padding: 40px; text-align: left; }
+    .greeting { color: #111827; font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 20px; }
+    .message-text { color: #4b5563; font-size: 16px; line-height: 1.8; margin-bottom: 30px; white-space: pre-wrap; }
+    
+    .original-message-box { background-color: #f9fafb; border-left: 4px solid #d1d5db; border-radius: 0 8px 8px 0; padding: 20px; margin-bottom: 30px; }
+    .original-title { color: #6b7280; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 10px 0; }
+    .original-text { color: #4b5563; font-size: 14px; margin: 0; line-height: 1.6; font-style: italic; white-space: pre-wrap; }
+    
+    .footer { background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #f3f4f6; }
+    .footer-text { color: #9ca3af; font-size: 13px; line-height: 1.6; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="main-container">
+      <div class="header">
+        <h1 class="header-logo">MobiMax</h1>
+      </div>
+      <div class="content-area">
+        <h2 class="greeting">Hi ${name},</h2>
+        <div class="message-text">${reply}</div>
+        
+        <div class="original-message-box">
+          <p class="original-title">Your Message</p>
+          <p class="original-text">${original}</p>
+        </div>
+      </div>
+      <div class="footer">
+        <p class="footer-text">&copy; ${new Date().getFullYear()} MobiMax Inc. All rights reserved.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+    };
+
+    const html = getHtmlTemplate(replyMessage, originalMessage);
+
+    const mailOptions = {
+      from: process.env.SMTP_FROM || '"MobiMax" <noreply@mobimax.com>',
+      to: email,
+      subject,
+      text,
+      html,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`Contact reply email sent to ${email} [Message ID: ${info.messageId}]`);
+    return info;
+  } catch (error) {
+    console.error('Error sending contact reply email:', error);
+  }
+};
+

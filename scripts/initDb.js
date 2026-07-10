@@ -120,6 +120,20 @@ async function initDatabase() {
       )
     `);
 
+    // 5.8 Create Contact Messages table
+    console.log('Creating `contact_messages` table if it doesn\'t exist...');
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS contact_messages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        reply TEXT DEFAULT NULL,
+        status VARCHAR(50) DEFAULT 'unread',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Seed default settings if they don't exist
     await connection.query(`INSERT IGNORE INTO settings (setting_key, setting_value) VALUES ('ad_duration', '5000')`);
     await connection.query(`INSERT IGNORE INTO settings (setting_key, setting_value) VALUES ('ad_shuffle', 'false')`);
