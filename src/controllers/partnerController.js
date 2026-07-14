@@ -147,7 +147,7 @@ export const getPartnerMe = async (req, res) => {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
     
-    const [partners] = await db.execute('SELECT id, company, name, email, phone, status, aadhar_card, pan_card, partner_photo, store_name, store_category, store_address, store_city, store_pincode, aadhar_number, pan_number, store_logo FROM partners WHERE id = ?', [decoded.id]);
+    const [partners] = await db.execute('SELECT id, company, name, email, phone, status, aadhar_card, pan_card, partner_photo, store_name, store_category, store_address, store_country, store_state, store_city, store_pincode, aadhar_number, pan_number, store_logo FROM partners WHERE id = ?', [decoded.id]);
     
     if (partners.length === 0) {
       return res.status(404).json({ status: 'error', message: 'Partner not found' });
@@ -170,13 +170,13 @@ export const uploadPartnerDocs = async (req, res) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
     const partnerId = decoded.id;
 
-    const { store_name, store_category, store_address, store_city, store_pincode, aadhar_number, pan_number } = req.body;
+    const { store_name, store_category, store_address, store_country, store_state, store_city, store_pincode, aadhar_number, pan_number } = req.body;
 
     if (!req.files || !req.files.aadhar_card || !req.files.pan_card || !req.files.partner_photo || !req.files.store_logo) {
       return res.status(400).json({ status: 'error', message: 'All 4 documents (including store logo) are required' });
     }
 
-    if (!store_name || !store_category || !store_address || !store_city || !store_pincode || !aadhar_number || !pan_number) {
+    if (!store_name || !store_category || !store_address || !store_country || !store_state || !store_city || !store_pincode || !aadhar_number || !pan_number) {
       return res.status(400).json({ status: 'error', message: 'All store and owner details are required' });
     }
 
@@ -199,11 +199,27 @@ export const uploadPartnerDocs = async (req, res) => {
     const logoUrl = await uploadToCloudinary(req.files.store_logo, 'mobimax_partner_docs');
 
     await db.execute(
-      'UPDATE partners SET aadhar_card = ?, pan_card = ?, partner_photo = ?, store_name = ?, store_category = ?, store_address = ?, store_city = ?, store_pincode = ?, aadhar_number = ?, pan_number = ?, store_logo = ?, status = ? WHERE id = ?',
-      [aadharUrl, panUrl, photoUrl, store_name, store_category, store_address, store_city, store_pincode, aadhar_number, pan_number, logoUrl, 'under_review', partnerId]
+      'UPDATE partners SET aadhar_card = ?, pan_card = ?, partner_photo = ?, store_name = ?, store_category = ?, store_address = ?, store_country = ?, store_state = ?, store_city = ?, store_pincode = ?, aadhar_number = ?, pan_number = ?, store_logo = ?, status = ? WHERE id = ?',
+      [aadharUrl, panUrl, photoUrl, store_name, store_category, store_address, store_country, store_state, store_city, store_pincode, aadhar_number, pan_number, logoUrl, 'under_review', partnerId]
     );
 
-    getIO().emit('partner_status_updated', { id: partnerId, status: 'under_review' });
+    getIO().emit('partner_status_updated', { 
+      id: partnerId, 
+      status: 'under_review',
+      store_name,
+      store_category,
+      store_address,
+      store_country,
+      store_state,
+      store_city,
+      store_pincode,
+      aadhar_number,
+      pan_number,
+      store_logo: logoUrl,
+      aadhar_card: aadharUrl,
+      pan_card: panUrl,
+      partner_photo: photoUrl
+    });
 
     res.status(200).json({ 
       status: 'success', 

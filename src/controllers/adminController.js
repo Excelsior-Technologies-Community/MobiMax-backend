@@ -99,7 +99,7 @@ export const updateUserStatus = async (req, res) => {
 
 export const getPartners = async (req, res) => {
   try {
-    const [partners] = await db.execute('SELECT id, company, name, email, phone, status, aadhar_card, pan_card, partner_photo, store_name, store_category, store_address, store_city, store_pincode, aadhar_number, pan_number, store_logo, created_at FROM partners ORDER BY created_at DESC');
+    const [partners] = await db.execute('SELECT id, company, name, email, phone, status, aadhar_card, pan_card, partner_photo, store_name, store_category, store_address, store_country, store_state, store_city, store_pincode, aadhar_number, pan_number, store_logo, created_at FROM partners ORDER BY created_at DESC');
     return res.status(200).json({ status: 'success', data: partners });
   } catch (error) {
     console.error('Error fetching partners:', error);
