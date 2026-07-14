@@ -65,6 +65,10 @@ export const loginPartner = async (req, res) => {
     if (partner.status === 'suspended') {
       return res.status(403).json({ status: 'error', message: 'Account is suspended' });
     }
+    
+    if (partner.status === 'pending' || partner.status === 'under_review') {
+      return res.status(403).json({ status: 'error', message: 'Your application is currently under review by the administrator.' });
+    }
 
     const isPasswordValid = await bcrypt.compare(password, partner.password);
 
