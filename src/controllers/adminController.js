@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import db from '../config/db.js';
 import { getIO } from '../socket.js';
-import { sendSuspensionEmail } from '../services/emailService.js';
+import { sendSuspensionEmail, sendPartnerApprovalEmail } from '../services/emailService.js';
 import { v2 as cloudinary } from 'cloudinary';
 import fs from 'fs';
 
@@ -118,6 +118,11 @@ export const updatePartnerStatus = async (req, res) => {
       const [partners] = await db.execute('SELECT name, email FROM partners WHERE id = ?', [id]);
       if (partners.length > 0) {
         sendSuspensionEmail(partners[0].email, partners[0].name, 'partner');
+      }
+    } else if (status === 'active') {
+      const [partners] = await db.execute('SELECT name, email FROM partners WHERE id = ?', [id]);
+      if (partners.length > 0) {
+        sendPartnerApprovalEmail(partners[0].email, partners[0].name);
       }
     }
     

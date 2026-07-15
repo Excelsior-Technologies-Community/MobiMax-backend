@@ -152,6 +152,9 @@ export const sendWelcomeEmail = async (email, name, role) => {
 
     const info = await transporter.sendMail(mailOptions);
     console.log(`Welcome email sent to ${email} [Message ID: ${info.messageId}]`);
+    if (process.env.SMTP_HOST === 'smtp.ethereal.email') {
+      console.log(`Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
+    }
     return info;
   } catch (error) {
     console.error('Error sending welcome email:', error);
@@ -256,6 +259,106 @@ export const sendSuspensionEmail = async (email, name, role) => {
     return info;
   } catch (error) {
     console.error('Error sending suspension email:', error);
+  }
+};
+
+export const sendPartnerApprovalEmail = async (email, name) => {
+  try {
+    const subject = 'Congratulations! Your Partner Account is Approved';
+      
+    const text = `Hi ${name},\n\nGreat news! Your partner application has been approved by our administration team.\nYou can now log in to your partner portal and start managing your store.\n\nBest Regards,\nThe MobiMax Team`;
+
+    const getHtmlTemplate = (message, buttonText, buttonLink) => {
+      return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap');
+    
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f5f7; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+    .wrapper { width: 100%; background-color: #f4f5f7; padding: 60px 20px; box-sizing: border-box; }
+    .main-container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08); }
+    
+    .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 50px 20px; text-align: center; position: relative; overflow: hidden; }
+    .header::after { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: url('data:image/svg+xml;utf8,<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" fill="rgba(255,255,255,0.05)"/></svg>') repeat; opacity: 0.5; }
+    .header-logo { position: relative; z-index: 1; font-size: 42px; font-weight: 800; color: #ffffff; margin: 0; letter-spacing: -1.5px; text-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+    .header-subtitle { position: relative; z-index: 1; color: rgba(255,255,255,0.95); font-size: 16px; margin-top: 12px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; }
+    
+    .content-area { padding: 50px 40px; text-align: center; }
+    .greeting { color: #111827; font-size: 28px; font-weight: 800; margin-top: 0; margin-bottom: 25px; letter-spacing: -0.5px; }
+    .message-text { color: #4b5563; font-size: 16px; line-height: 1.8; margin-bottom: 35px; }
+    
+    .highlight-box { background: linear-gradient(to right, #ecfdf5, #ffffff); border-left: 4px solid #10b981; border-radius: 0 12px 12px 0; padding: 25px; margin-bottom: 40px; text-align: left; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+    .highlight-title { color: #047857; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0; }
+    .highlight-text { color: #064e3b; font-size: 15px; margin: 0; line-height: 1.6; font-weight: 500; }
+    
+    .cta-wrapper { margin-top: 10px; margin-bottom: 20px; }
+    .cta-button { background-color: #10b981; color: #ffffff !important; padding: 18px 42px; text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 16px; display: inline-block; transition: all 0.3s ease; box-shadow: 0 10px 20px -5px rgba(16, 185, 129, 0.4); letter-spacing: 0.5px; }
+    
+    .footer { background-color: #f9fafb; padding: 40px; text-align: center; border-top: 1px solid #f3f4f6; }
+    .footer-text { color: #9ca3af; font-size: 13px; line-height: 1.6; margin: 0 0 10px 0; }
+    
+    @media only screen and (max-width: 600px) {
+      .wrapper { padding: 20px 10px; }
+      .content-area { padding: 40px 20px; }
+      .header { padding: 40px 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="main-container">
+      <div class="header">
+        <h1 class="header-logo">MobiMax</h1>
+        <div class="header-subtitle">Application Approved</div>
+      </div>
+      <div class="content-area">
+        <h2 class="greeting">Hi ${name}, 🎉</h2>
+        <div class="message-text">
+          ${message}
+        </div>
+        <div class="cta-wrapper">
+          <a href="${buttonLink}" class="cta-button">${buttonText}</a>
+        </div>
+      </div>
+      <div class="footer">
+        <p class="footer-text">&copy; ${new Date().getFullYear()} MobiMax Inc. All rights reserved.</p>
+        <p class="footer-text" style="font-size: 11px;">You are receiving this email because your partner application was just approved by our team.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+    };
+
+    const html = getHtmlTemplate(
+      `<p>Great news! Your partner application and KYC documents have been fully verified and approved by the MobiMax administration team.</p>
+       <div class="highlight-box">
+         <p class="highlight-title">You're Ready to Go!</p>
+         <p class="highlight-text">Your store is now fully activated. You can log into the Partner Portal immediately to start managing your catalog, setting up your inventory, and reaching thousands of customers.</p>
+       </div>`,
+      'Log into Partner Portal',
+      'http://localhost:5173/partner/login'
+    );
+
+    const mailOptions = {
+      from: process.env.SMTP_FROM || '"MobiMax" <noreply@mobimax.com>',
+      to: email,
+      subject,
+      text,
+      html,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`Approval email sent to ${email} [Message ID: ${info.messageId}]`);
+    if (process.env.SMTP_HOST === 'smtp.ethereal.email') {
+      console.log(`Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
+    }
+    return info;
+  } catch (error) {
+    console.error('Error sending approval email:', error);
   }
 };
 
