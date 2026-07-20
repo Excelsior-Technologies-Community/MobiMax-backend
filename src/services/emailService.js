@@ -1,34 +1,38 @@
 import nodemailer from 'nodemailer';
 
-// Create a transporter using SMTP configurations from environment variables
-const createTransporter = () => {
-  if (process.env.SMTP_HOST && process.env.SMTP_USER) {
-    return nodemailer.createTransport({
+let transporterInstance = null;
+
+// Create a transporter dynamically
+const getTransporter = async () => {
+  if (transporterInstance) return transporterInstance;
+
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && !process.env.SMTP_HOST.includes('ethereal')) {
+    transporterInstance = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: process.env.SMTP_PORT || 587,
-      secure: process.env.SMTP_PORT == 465, // true for 465, false for other ports
+      secure: process.env.SMTP_PORT == 465,
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
     });
+    return transporterInstance;
   }
   
-  // Fallback for development if no SMTP is configured
-  console.warn('SMTP configuration is missing. Emails will be logged to console instead of sent.');
-  return {
-    sendMail: async (mailOptions) => {
-      console.log('--- Mock Email Sent ---');
-      console.log(`To: ${mailOptions.to}`);
-      console.log(`Subject: ${mailOptions.subject}`);
-      console.log(`Text Body: \n${mailOptions.text}`);
-      console.log('-----------------------');
-      return { messageId: 'mock-id' };
-    }
-  };
+  // Fallback to dynamic Ethereal if no valid SMTP is configured
+  console.log('Generating dynamic Ethereal Test Account for emails...');
+  const testAccount = await nodemailer.createTestAccount();
+  transporterInstance = nodemailer.createTransport({
+    host: 'smtp.ethereal.email',
+    port: 587,
+    secure: false,
+    auth: {
+      user: testAccount.user,
+      pass: testAccount.pass,
+    },
+  });
+  return transporterInstance;
 };
-
-const transporter = createTransporter();
 
 export const sendWelcomeEmail = async (email, name, role) => {
   try {
@@ -150,9 +154,10 @@ export const sendWelcomeEmail = async (email, name, role) => {
       html,
     };
 
+    const transporter = await getTransporter();
     const info = await transporter.sendMail(mailOptions);
     console.log(`Welcome email sent to ${email} [Message ID: ${info.messageId}]`);
-    if (process.env.SMTP_HOST === 'smtp.ethereal.email') {
+    if (!process.env.SMTP_HOST || process.env.SMTP_HOST.includes('ethereal')) {
       console.log(`Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
     }
     return info;
@@ -254,8 +259,12 @@ export const sendSuspensionEmail = async (email, name, role) => {
       html,
     };
 
+    const transporter = await getTransporter();
     const info = await transporter.sendMail(mailOptions);
     console.log(`Suspension email sent to ${email} [Message ID: ${info.messageId}]`);
+    if (!process.env.SMTP_HOST || process.env.SMTP_HOST.includes('ethereal')) {
+      console.log(`Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
+    }
     return info;
   } catch (error) {
     console.error('Error sending suspension email:', error);
@@ -351,9 +360,10 @@ export const sendPartnerApprovalEmail = async (email, name) => {
       html,
     };
 
+    const transporter = await getTransporter();
     const info = await transporter.sendMail(mailOptions);
     console.log(`Approval email sent to ${email} [Message ID: ${info.messageId}]`);
-    if (process.env.SMTP_HOST === 'smtp.ethereal.email') {
+    if (!process.env.SMTP_HOST || process.env.SMTP_HOST.includes('ethereal')) {
       console.log(`Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
     }
     return info;
@@ -452,8 +462,12 @@ export const sendPasswordResetEmail = async (email, name, resetLink, role) => {
       html,
     };
 
+    const transporter = await getTransporter();
     const info = await transporter.sendMail(mailOptions);
     console.log(`Password reset email sent to ${email} [Message ID: ${info.messageId}]`);
+    if (!process.env.SMTP_HOST || process.env.SMTP_HOST.includes('ethereal')) {
+      console.log(`Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
+    }
     return info;
   } catch (error) {
     console.error('Error sending password reset email:', error);
@@ -529,8 +543,12 @@ export const sendContactReplyEmail = async (email, name, replyMessage, originalM
       html,
     };
 
+    const transporter = await getTransporter();
     const info = await transporter.sendMail(mailOptions);
     console.log(`Contact reply email sent to ${email} [Message ID: ${info.messageId}]`);
+    if (!process.env.SMTP_HOST || process.env.SMTP_HOST.includes('ethereal')) {
+      console.log(`Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
+    }
     return info;
   } catch (error) {
     console.error('Error sending contact reply email:', error);
