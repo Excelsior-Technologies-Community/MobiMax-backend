@@ -136,6 +136,25 @@ async function initDatabase() {
       )
     `);
 
+    // 5.9 Create Products table
+    console.log('Creating `products` table if it doesn\'t exist...');
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        partner_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        price DECIMAL(10, 2) NOT NULL,
+        oldPrice DECIMAL(10, 2) DEFAULT NULL,
+        image_url VARCHAR(500) NOT NULL,
+        category VARCHAR(100) NOT NULL,
+        rating INT DEFAULT 0,
+        status VARCHAR(50) DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (partner_id) REFERENCES partners(id) ON DELETE CASCADE
+      )
+    `);
+
     // Seed default settings if they don't exist
     await connection.query(`INSERT IGNORE INTO settings (setting_key, setting_value) VALUES ('ad_duration', '5000')`);
     await connection.query(`INSERT IGNORE INTO settings (setting_key, setting_value) VALUES ('ad_shuffle', 'false')`);

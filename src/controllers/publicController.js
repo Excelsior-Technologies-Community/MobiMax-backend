@@ -37,3 +37,20 @@ export const getPublicAdvertisements = async (req, res) => {
     return res.status(500).json({ status: 'error', message: 'Failed to fetch advertisements' });
   }
 };
+
+export const getPublicProducts = async (req, res) => {
+  try {
+    const [products] = await db.execute(`
+      SELECT p.*, pt.company as partner_name, pt.store_name 
+      FROM products p 
+      JOIN partners pt ON p.partner_id = pt.id 
+      WHERE p.status = 'active' AND pt.status = 'approved'
+      ORDER BY p.created_at DESC
+    `);
+    
+    return res.status(200).json({ status: 'success', data: products });
+  } catch (error) {
+    console.error('Error fetching public products:', error);
+    return res.status(500).json({ status: 'error', message: 'Failed to fetch products' });
+  }
+};

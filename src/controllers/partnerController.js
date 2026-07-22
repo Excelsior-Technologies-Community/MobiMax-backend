@@ -232,3 +232,158 @@ export const uploadPartnerDocs = async (req, res) => {
     res.status(500).json({ status: 'error', message: 'Failed to upload documents' });
   }
 };
+
+export const addProduct = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+
+    const { title, description, price, oldPrice, category } = req.body;
+
+    if (!title || !price || !category) {
+      return res.status(400).json({ status: 'error', message: 'Title, price, and category are required' });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ status: 'error', message: 'At least one product image is required' });
+    }
+
+    // Upload all files to Cloudinary
+    const uploadPromises = req.files.map(file => {
+      return cloudinary.uploader.upload(file.path, { folder: 'products' });
+    });
+    
+    const uploadResults = await Promise.all(uploadPromises);
+    const imageUrls = uploadResults.map(result => result.secure_url);
+    
+    // First image acts as primary cover image
+    const primaryImageUrl = imageUrls[0];
+    const imagesJson = JSON.stringify(imageUrls);
+
+    // Clean up local temp files
+    req.files.forEach(file => {
+      fs.unlinkSync(file.path);
+    });
+
+    const [result] = await db.execute(
+      `INSERT INTO products (partner_id, title, description, price, oldPrice, category, image_url, images_json) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        partnerId,
+        title,
+        description || '',
+        parseFloat(price),
+        oldPrice ? parseFloat(oldPrice) : null,
+        category,
+        primaryImageUrl,
+        imagesJson
+      ]
+    );
+
+    res.status(201).json({ status: 'success', message: 'Product added successfully', data: { id: result.insertId } });
+  } catch (error) {
+    console.error('addProduct error:', error);
+    
+    // Clean up local temp files if error occurs
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        if (fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+      });
+    }
+
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to add product' });
+  }
+};
+
+export const getProducts = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+
+    const [products] = await db.execute('SELECT * FROM products WHERE partner_id = ? ORDER BY created_at DESC', [partnerId]);
+    
+    res.status(200).json({ status: 'success', data: products });
+  } catch (error) {
+    console.error('getProducts error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to fetch products' });
+  }
+};
+
+export const deleteProduct = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+    const productId = req.params.id;
+
+    // Optional: check if the product belongs to the partner
+    const [existing] = await db.execute('SELECT id FROM products WHERE id = ? AND partner_id = ?', [productId, partnerId]);
+    if (existing.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Product not found or unauthorized' });
+    }
+
+    await db.execute('DELETE FROM products WHERE id = ? AND partner_id = ?', [productId, partnerId]);
+    
+    res.status(200).json({ status: 'success', message: 'Product deleted successfully' });
+  } catch (error) {
+    console.error('deleteProduct error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to delete product' });
+  }
+};
+
+export const toggleProductStock = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+    const productId = req.params.id;
+
+    // First check if product belongs to partner
+    const [existing] = await db.execute('SELECT id, in_stock FROM products WHERE id = ? AND partner_id = ?', [productId, partnerId]);
+    if (existing.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Product not found or unauthorized' });
+    }
+
+    const currentStockStatus = existing[0].in_stock;
+    const newStockStatus = currentStockStatus ? 0 : 1; // Toggle boolean
+
+    await db.execute('UPDATE products SET in_stock = ? WHERE id = ?', [newStockStatus, productId]);
+    
+    res.status(200).json({ status: 'success', message: 'Stock status updated successfully', in_stock: newStockStatus === 1 });
+  } catch (error) {
+    console.error('toggleProductStock error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to update stock status' });
+  }
+};

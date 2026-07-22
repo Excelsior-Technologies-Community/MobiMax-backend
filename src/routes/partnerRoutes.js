@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { registerPartner, loginPartner, getDashboardStats, getPartnerMe, uploadPartnerDocs } from '../controllers/partnerController.js';
+import { registerPartner, loginPartner, getDashboardStats, getPartnerMe, uploadPartnerDocs, addProduct, getProducts, deleteProduct, toggleProductStock } from '../controllers/partnerController.js';
 
 const router = express.Router();
 
@@ -28,5 +28,10 @@ router.post('/upload-docs', upload.fields([
   { name: 'pan_card', maxCount: 1 },
   { name: 'partner_photo', maxCount: 1 }
 ]), uploadPartnerDocs);
+
+router.post('/products', upload.array('product_images', 5), addProduct);
+router.get('/products', getProducts);
+router.delete('/products/:id', deleteProduct);
+router.patch('/products/:id/toggle-stock', toggleProductStock);
 
 export default router;
