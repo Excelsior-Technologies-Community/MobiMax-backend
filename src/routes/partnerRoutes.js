@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { registerPartner, loginPartner, getDashboardStats, getPartnerMe, uploadPartnerDocs, addProduct, getProducts, deleteProduct, toggleProductStock } from '../controllers/partnerController.js';
+import { registerPartner, loginPartner, getDashboardStats, getPartnerMe, uploadPartnerDocs, addProduct, getProducts, deleteProduct, toggleProductStock, updateProduct } from '../controllers/partnerController.js';
 
 const router = express.Router();
 
@@ -30,6 +30,7 @@ router.post('/upload-docs', upload.fields([
 ]), uploadPartnerDocs);
 
 router.post('/products', upload.array('product_images', 5), addProduct);
+router.put('/products/:id', upload.array('product_images', 5), updateProduct);
 router.get('/products', getProducts);
 router.delete('/products/:id', deleteProduct);
 router.patch('/products/:id/toggle-stock', toggleProductStock);

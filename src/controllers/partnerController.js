@@ -387,3 +387,92 @@ export const toggleProductStock = async (req, res) => {
     res.status(500).json({ status: 'error', message: 'Failed to update stock status' });
   }
 };
+
+export const updateProduct = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+    const productId = req.params.id;
+
+    // Verify ownership
+    const [existing] = await db.execute('SELECT id FROM products WHERE id = ? AND partner_id = ?', [productId, partnerId]);
+    if (existing.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Product not found or unauthorized' });
+    }
+
+    const { title, description, price, oldPrice, category } = req.body;
+    let existingImages = [];
+    try {
+      if (req.body.existing_images) {
+        existingImages = JSON.parse(req.body.existing_images);
+      }
+    } catch (e) {
+      existingImages = [];
+    }
+
+    if (!title || !price || !category) {
+      return res.status(400).json({ status: 'error', message: 'Title, price, and category are required' });
+    }
+
+    const hasNewFiles = req.files && req.files.length > 0;
+    if (existingImages.length === 0 && !hasNewFiles) {
+      return res.status(400).json({ status: 'error', message: 'At least one product image is required' });
+    }
+
+    let newImageUrls = [];
+    if (hasNewFiles) {
+      const uploadPromises = req.files.map(file => {
+        return cloudinary.uploader.upload(file.path, { folder: 'products' });
+      });
+      const uploadResults = await Promise.all(uploadPromises);
+      newImageUrls = uploadResults.map(result => result.secure_url);
+    }
+
+    const finalImages = [...existingImages, ...newImageUrls].slice(0, 5);
+    const primaryImageUrl = finalImages[0];
+    const imagesJson = JSON.stringify(finalImages);
+
+    if (hasNewFiles) {
+      req.files.forEach(file => {
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      });
+    }
+
+    await db.execute(
+      `UPDATE products 
+       SET title = ?, description = ?, price = ?, oldPrice = ?, category = ?, image_url = ?, images_json = ?
+       WHERE id = ? AND partner_id = ?`,
+      [
+        title,
+        description || '',
+        parseFloat(price),
+        oldPrice ? parseFloat(oldPrice) : null,
+        category,
+        primaryImageUrl,
+        imagesJson,
+        productId,
+        partnerId
+      ]
+    );
+
+    res.status(200).json({ status: 'success', message: 'Product updated successfully' });
+  } catch (error) {
+    console.error('updateProduct error:', error);
+    
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      });
+    }
+
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to update product' });
+  }
+};
