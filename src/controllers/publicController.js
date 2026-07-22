@@ -54,3 +54,55 @@ export const getPublicProducts = async (req, res) => {
     return res.status(500).json({ status: 'error', message: 'Failed to fetch products' });
   }
 };
+
+export const getStoresByCategory = async (req, res) => {
+  try {
+    const { categoryName } = req.params;
+    const [stores] = await db.execute(`
+      SELECT DISTINCT pt.id, pt.company, pt.store_name, pt.store_logo, pt.store_city as city 
+      FROM partners pt 
+      JOIN products p ON pt.id = p.partner_id 
+      WHERE pt.status = 'active' AND p.status = 'active' AND p.category = ?
+    `, [categoryName]);
+    
+    return res.status(200).json({ status: 'success', data: stores });
+  } catch (error) {
+    console.error('Error fetching stores by category:', error);
+    return res.status(500).json({ status: 'error', message: 'Failed to fetch stores' });
+  }
+};
+
+export const getStoreProductsByCategory = async (req, res) => {
+  try {
+    const { storeId, categoryName } = req.params;
+    
+    // Get store info
+    const [storeInfo] = await db.execute(`
+      SELECT id, company, store_name, store_logo, store_city as city 
+      FROM partners 
+      WHERE id = ? AND status = 'active'
+    `, [storeId]);
+
+    if (storeInfo.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Store not found' });
+    }
+
+    // Get products
+    const [products] = await db.execute(`
+      SELECT * 
+      FROM products 
+      WHERE partner_id = ? AND category = ? AND status = 'active'
+    `, [storeId, categoryName]);
+    
+    return res.status(200).json({ 
+      status: 'success', 
+      data: {
+        store: storeInfo[0],
+        products
+      } 
+    });
+  } catch (error) {
+    console.error('Error fetching store products:', error);
+    return res.status(500).json({ status: 'error', message: 'Failed to fetch store products' });
+  }
+};
