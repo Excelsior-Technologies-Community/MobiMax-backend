@@ -81,6 +81,7 @@ async function initDatabase() {
         aadhar_card VARCHAR(500) DEFAULT NULL,
         pan_card VARCHAR(500) DEFAULT NULL,
         partner_photo VARCHAR(500) DEFAULT NULL,
+        is_paused BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -150,7 +151,27 @@ async function initDatabase() {
         category VARCHAR(100) NOT NULL,
         rating INT DEFAULT 0,
         status VARCHAR(50) DEFAULT 'active',
+        in_stock TINYINT(1) DEFAULT 1,
+        stock_quantity INT DEFAULT 0,
+        sku VARCHAR(255) DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (partner_id) REFERENCES partners(id) ON DELETE CASCADE
+      )
+    `);
+
+    // 5.10 Create Stock Entries table
+    console.log('Creating `stock_entries` table if it doesn\\'t exist...');
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS stock_entries (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        product_id INT NOT NULL,
+        partner_id INT NOT NULL,
+        quantity_added INT NOT NULL,
+        purchase_price DECIMAL(10, 2) DEFAULT NULL,
+        supplier_name VARCHAR(255) DEFAULT NULL,
+        notes TEXT DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
         FOREIGN KEY (partner_id) REFERENCES partners(id) ON DELETE CASCADE
       )
     `);

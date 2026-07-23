@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { registerPartner, loginPartner, getDashboardStats, getPartnerMe, uploadPartnerDocs, addProduct, getProducts, deleteProduct, toggleProductStock, updateProduct } from '../controllers/partnerController.js';
+import { registerPartner, loginPartner, getDashboardStats, getPartnerMe, uploadPartnerDocs, addProduct, getProducts, deleteProduct, toggleProductStock, updateProduct, updateProductStock, getStockEntries, addStockEntry, updateStockEntry, deleteStockEntry, toggleStorePause, getStoreContacts, updateStoreContactStatus, getBulkOrders, updateBulkOrderStatus } from '../controllers/partnerController.js';
 
 const router = express.Router();
 
@@ -20,6 +20,7 @@ const upload = multer({ storage: storage });
 router.post('/signup', registerPartner);
 router.post('/login', loginPartner);
 router.get('/dashboard-stats', getDashboardStats);
+router.post('/toggle-pause', toggleStorePause);
 
 router.get('/me', getPartnerMe);
 router.post('/upload-docs', upload.fields([
@@ -34,5 +35,17 @@ router.put('/products/:id', upload.array('product_images', 5), updateProduct);
 router.get('/products', getProducts);
 router.delete('/products/:id', deleteProduct);
 router.patch('/products/:id/toggle-stock', toggleProductStock);
+router.patch('/products/:id/stock', updateProductStock);
+
+router.get('/stock-entries', getStockEntries);
+router.post('/stock-entries', addStockEntry);
+router.put('/stock-entries/:id', updateStockEntry);
+router.delete('/stock-entries/:id', deleteStockEntry);
+
+router.get('/contacts', getStoreContacts);
+router.patch('/contacts/:id/status', updateStoreContactStatus);
+
+router.get('/bulk-orders', getBulkOrders);
+router.patch('/bulk-orders/:id/status', updateBulkOrderStatus);
 
 export default router;

@@ -77,7 +77,7 @@ export const loginPartner = async (req, res) => {
     }
 
     // Generate JWT
-    const payload = { id: partner.id, company: partner.company, name: partner.name, email: partner.email, role: 'partner', status: partner.status };
+    const payload = { id: partner.id, company: partner.company, name: partner.name, email: partner.email, role: 'partner', status: partner.status, is_paused: !!partner.is_paused };
     const token = jwt.sign(payload, process.env.JWT_SECRET || 'fallback_super_secret_key_123', { expiresIn: '24h' });
 
     res.status(200).json({ status: 'success', message: 'Login successful', token, partner: payload });
@@ -147,7 +147,7 @@ export const getPartnerMe = async (req, res) => {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
     
-    const [partners] = await db.execute('SELECT id, company, name, email, phone, status, aadhar_card, pan_card, partner_photo, store_name, store_category, store_address, store_country, store_state, store_city, store_pincode, aadhar_number, pan_number, store_logo FROM partners WHERE id = ?', [decoded.id]);
+    const [partners] = await db.execute('SELECT id, company, name, email, phone, status, is_paused, aadhar_card, pan_card, partner_photo, store_name, store_category, store_address, store_country, store_state, store_city, store_pincode, aadhar_number, pan_number, store_logo FROM partners WHERE id = ?', [decoded.id]);
     
     if (partners.length === 0) {
       return res.status(404).json({ status: 'error', message: 'Partner not found' });
@@ -243,7 +243,7 @@ export const addProduct = async (req, res) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
     const partnerId = decoded.id;
 
-    const { title, description, price, oldPrice, category } = req.body;
+    const { title, description, price, oldPrice, category, stock_quantity, sku } = req.body;
 
     if (!title || !price || !category) {
       return res.status(400).json({ status: 'error', message: 'Title, price, and category are required' });
@@ -271,8 +271,8 @@ export const addProduct = async (req, res) => {
     });
 
     const [result] = await db.execute(
-      `INSERT INTO products (partner_id, title, description, price, oldPrice, category, image_url, images_json) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO products (partner_id, title, description, price, oldPrice, category, image_url, images_json, stock_quantity, sku) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         partnerId,
         title,
@@ -281,7 +281,9 @@ export const addProduct = async (req, res) => {
         oldPrice ? parseFloat(oldPrice) : null,
         category,
         primaryImageUrl,
-        imagesJson
+        imagesJson,
+        stock_quantity ? parseInt(stock_quantity, 10) : 0,
+        sku || null
       ]
     );
 
@@ -405,7 +407,7 @@ export const updateProduct = async (req, res) => {
       return res.status(404).json({ status: 'error', message: 'Product not found or unauthorized' });
     }
 
-    const { title, description, price, oldPrice, category } = req.body;
+    const { title, description, price, oldPrice, category, stock_quantity, sku } = req.body;
     let existingImages = [];
     try {
       if (req.body.existing_images) {
@@ -445,7 +447,7 @@ export const updateProduct = async (req, res) => {
 
     await db.execute(
       `UPDATE products 
-       SET title = ?, description = ?, price = ?, oldPrice = ?, category = ?, image_url = ?, images_json = ?
+       SET title = ?, description = ?, price = ?, oldPrice = ?, category = ?, image_url = ?, images_json = ?, stock_quantity = ?, sku = ?
        WHERE id = ? AND partner_id = ?`,
       [
         title,
@@ -455,6 +457,8 @@ export const updateProduct = async (req, res) => {
         category,
         primaryImageUrl,
         imagesJson,
+        stock_quantity !== undefined ? parseInt(stock_quantity, 10) : 0,
+        sku || null,
         productId,
         partnerId
       ]
@@ -474,5 +478,426 @@ export const updateProduct = async (req, res) => {
       return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
     }
     res.status(500).json({ status: 'error', message: 'Failed to update product' });
+  }
+};
+
+export const updateProductStock = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+    const productId = req.params.id;
+
+    // Verify ownership
+    const [existing] = await db.execute('SELECT id FROM products WHERE id = ? AND partner_id = ?', [productId, partnerId]);
+    if (existing.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Product not found or unauthorized' });
+    }
+
+    const { stock_quantity } = req.body;
+    
+    if (stock_quantity === undefined) {
+      return res.status(400).json({ status: 'error', message: 'stock_quantity is required' });
+    }
+
+    const newStock = parseInt(stock_quantity, 10);
+    const inStock = newStock > 0 ? 1 : 0; // Auto-toggle in_stock based on quantity
+
+    await db.execute('UPDATE products SET stock_quantity = ?, in_stock = ? WHERE id = ?', [newStock, inStock, productId]);
+    
+    res.status(200).json({ status: 'success', message: 'Stock updated successfully', stock_quantity: newStock, in_stock: inStock === 1 });
+  } catch (error) {
+    console.error('updateProductStock error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to update stock' });
+  }
+};
+
+export const getStockEntries = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+
+    const [entries] = await db.execute(`
+      SELECT se.*, p.title as product_title, p.sku 
+      FROM stock_entries se
+      JOIN products p ON se.product_id = p.id
+      WHERE se.partner_id = ?
+      ORDER BY se.created_at DESC
+    `, [partnerId]);
+
+    res.status(200).json({ status: 'success', data: entries });
+  } catch (error) {
+    console.error('getStockEntries error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to fetch stock entries' });
+  }
+};
+
+export const addStockEntry = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+
+    const { product_id, quantity_added, purchase_price, supplier_name, notes } = req.body;
+
+    if (!product_id || !quantity_added) {
+      return res.status(400).json({ status: 'error', message: 'product_id and quantity_added are required' });
+    }
+
+    const quantity = parseInt(quantity_added, 10);
+    if (isNaN(quantity) || quantity <= 0) {
+      return res.status(400).json({ status: 'error', message: 'quantity_added must be a positive number' });
+    }
+
+    await connection.beginTransaction();
+
+    // Verify ownership and get current stock
+    const [products] = await connection.execute('SELECT id, stock_quantity FROM products WHERE id = ? AND partner_id = ? FOR UPDATE', [product_id, partnerId]);
+    if (products.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ status: 'error', message: 'Product not found or unauthorized' });
+    }
+
+    // Insert stock entry
+    const [result] = await connection.execute(
+      `INSERT INTO stock_entries (product_id, partner_id, quantity_added, purchase_price, supplier_name, notes) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        product_id, 
+        partnerId, 
+        quantity, 
+        purchase_price ? parseFloat(purchase_price) : null, 
+        supplier_name || null, 
+        notes || null
+      ]
+    );
+
+    // Update product stock_quantity
+    const currentStock = products[0].stock_quantity || 0;
+    const newStock = currentStock + quantity;
+    const inStock = newStock > 0 ? 1 : 0;
+
+    await connection.execute('UPDATE products SET stock_quantity = ?, in_stock = ? WHERE id = ?', [newStock, inStock, product_id]);
+
+    await connection.commit();
+    
+    res.status(201).json({ status: 'success', message: 'Stock entry added successfully', data: { id: result.insertId } });
+  } catch (error) {
+    await connection.rollback();
+    console.error('addStockEntry error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to add stock entry' });
+  } finally {
+    connection.release();
+  }
+};
+
+export const updateStockEntry = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+    const entryId = req.params.id;
+
+    const { product_id, quantity_added, purchase_price, supplier_name, notes } = req.body;
+
+    if (!product_id || !quantity_added) {
+      return res.status(400).json({ status: 'error', message: 'product_id and quantity_added are required' });
+    }
+
+    const newQuantity = parseInt(quantity_added, 10);
+    if (isNaN(newQuantity) || newQuantity <= 0) {
+      return res.status(400).json({ status: 'error', message: 'quantity_added must be a positive number' });
+    }
+
+    await connection.beginTransaction();
+
+    // Find existing entry
+    const [existingEntries] = await connection.execute('SELECT * FROM stock_entries WHERE id = ? AND partner_id = ?', [entryId, partnerId]);
+    if (existingEntries.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ status: 'error', message: 'Stock entry not found or unauthorized' });
+    }
+
+    const oldEntry = existingEntries[0];
+    const oldProductId = oldEntry.product_id;
+    const oldQuantity = oldEntry.quantity_added;
+
+    // Verify products exist and lock them
+    let productIds = [oldProductId];
+    if (oldProductId !== parseInt(product_id, 10)) {
+      productIds.push(parseInt(product_id, 10));
+    }
+
+    // Lock all involved products
+    const [products] = await connection.execute(
+      `SELECT id, stock_quantity FROM products WHERE id IN (${productIds.map(() => '?').join(',')}) AND partner_id = ? FOR UPDATE`, 
+      [...productIds, partnerId]
+    );
+
+    if (products.length !== productIds.length) {
+      await connection.rollback();
+      return res.status(404).json({ status: 'error', message: 'One or more products not found or unauthorized' });
+    }
+
+    // Update the stock entry
+    await connection.execute(
+      `UPDATE stock_entries 
+       SET product_id = ?, quantity_added = ?, purchase_price = ?, supplier_name = ?, notes = ? 
+       WHERE id = ?`,
+      [
+        product_id, 
+        newQuantity, 
+        purchase_price ? parseFloat(purchase_price) : null, 
+        supplier_name || null, 
+        notes || null,
+        entryId
+      ]
+    );
+
+    // Update product stock quantities
+    if (oldProductId === parseInt(product_id, 10)) {
+      // Same product, just adjust the difference
+      const diff = newQuantity - oldQuantity;
+      const product = products[0];
+      const newStock = Math.max(0, (product.stock_quantity || 0) + diff);
+      const inStock = newStock > 0 ? 1 : 0;
+      await connection.execute('UPDATE products SET stock_quantity = ?, in_stock = ? WHERE id = ?', [newStock, inStock, oldProductId]);
+    } else {
+      // Different products
+      const oldProduct = products.find(p => p.id === oldProductId);
+      const newProduct = products.find(p => p.id === parseInt(product_id, 10));
+
+      const oldProductNewStock = Math.max(0, (oldProduct.stock_quantity || 0) - oldQuantity);
+      const oldProductInStock = oldProductNewStock > 0 ? 1 : 0;
+      await connection.execute('UPDATE products SET stock_quantity = ?, in_stock = ? WHERE id = ?', [oldProductNewStock, oldProductInStock, oldProductId]);
+
+      const newProductNewStock = Math.max(0, (newProduct.stock_quantity || 0) + newQuantity);
+      const newProductInStock = newProductNewStock > 0 ? 1 : 0;
+      await connection.execute('UPDATE products SET stock_quantity = ?, in_stock = ? WHERE id = ?', [newProductNewStock, newProductInStock, newProduct.id]);
+    }
+
+    await connection.commit();
+    res.status(200).json({ status: 'success', message: 'Stock entry updated successfully' });
+  } catch (error) {
+    await connection.rollback();
+    console.error('updateStockEntry error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to update stock entry' });
+  } finally {
+    connection.release();
+  }
+};
+
+export const deleteStockEntry = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+    const entryId = req.params.id;
+
+    await connection.beginTransaction();
+
+    // Find existing entry
+    const [existingEntries] = await connection.execute('SELECT * FROM stock_entries WHERE id = ? AND partner_id = ?', [entryId, partnerId]);
+    if (existingEntries.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ status: 'error', message: 'Stock entry not found or unauthorized' });
+    }
+
+    const entry = existingEntries[0];
+    const productId = entry.product_id;
+    const quantity = entry.quantity_added;
+
+    // Lock product
+    const [products] = await connection.execute('SELECT id, stock_quantity FROM products WHERE id = ? AND partner_id = ? FOR UPDATE', [productId, partnerId]);
+    
+    if (products.length > 0) {
+      const product = products[0];
+      const newStock = Math.max(0, (product.stock_quantity || 0) - quantity);
+      const inStock = newStock > 0 ? 1 : 0;
+      await connection.execute('UPDATE products SET stock_quantity = ?, in_stock = ? WHERE id = ?', [newStock, inStock, productId]);
+    }
+
+    // Delete entry
+    await connection.execute('DELETE FROM stock_entries WHERE id = ?', [entryId]);
+
+    await connection.commit();
+    res.status(200).json({ status: 'success', message: 'Stock entry deleted successfully' });
+  } catch (error) {
+    await connection.rollback();
+    console.error('deleteStockEntry error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to delete stock entry' });
+  } finally {
+    connection.release();
+  }
+};
+
+export const toggleStorePause = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+
+    // Fetch current state
+    const [partners] = await db.execute('SELECT is_paused FROM partners WHERE id = ?', [partnerId]);
+    if (partners.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Partner not found' });
+    }
+
+    const currentState = partners[0].is_paused;
+    const newState = currentState ? 0 : 1;
+
+    await db.execute('UPDATE partners SET is_paused = ? WHERE id = ?', [newState, partnerId]);
+
+    // Optional: emit socket event if you want live UI updates elsewhere
+    getIO().emit('store_pause_toggled', { partner_id: partnerId, is_paused: !!newState });
+
+    res.status(200).json({ status: 'success', message: newState ? 'Store paused' : 'Store resumed', is_paused: !!newState });
+  } catch (error) {
+    console.error('toggleStorePause error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to toggle store status' });
+  }
+};
+
+export const getStoreContacts = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+
+    const [contacts] = await db.execute('SELECT * FROM store_contact_messages WHERE partner_id = ? ORDER BY created_at DESC', [partnerId]);
+    
+    res.status(200).json({ status: 'success', data: contacts });
+  } catch (error) {
+    console.error('getStoreContacts error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to fetch contacts' });
+  }
+};
+
+export const updateStoreContactStatus = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+    const contactId = req.params.id;
+    const { status } = req.body;
+
+    await db.execute('UPDATE store_contact_messages SET status = ? WHERE id = ? AND partner_id = ?', [status, contactId, partnerId]);
+    
+    res.status(200).json({ status: 'success', message: 'Status updated' });
+  } catch (error) {
+    console.error('updateStoreContactStatus error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to update contact status' });
+  }
+};
+
+export const getBulkOrders = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+
+    const [orders] = await db.execute(`
+      SELECT b.*, p.title as product_title, p.image_url as product_image, p.price as product_price, p.sku as product_sku
+      FROM bulk_orders b
+      JOIN products p ON b.product_id = p.id
+      WHERE b.partner_id = ?
+      ORDER BY b.created_at DESC
+    `, [partnerId]);
+    
+    res.status(200).json({ status: 'success', data: orders });
+  } catch (error) {
+    console.error('getBulkOrders error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to fetch bulk orders' });
+  }
+};
+
+export const updateBulkOrderStatus = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_super_secret_key_123');
+    const partnerId = decoded.id;
+    const orderId = req.params.id;
+    const { status } = req.body;
+
+    await db.execute('UPDATE bulk_orders SET status = ? WHERE id = ? AND partner_id = ?', [status, orderId, partnerId]);
+    
+    res.status(200).json({ status: 'success', message: 'Bulk order status updated' });
+  } catch (error) {
+    console.error('updateBulkOrderStatus error:', error);
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: 'error', message: 'Unauthorized: Invalid or expired token' });
+    }
+    res.status(500).json({ status: 'error', message: 'Failed to update bulk order status' });
   }
 };
