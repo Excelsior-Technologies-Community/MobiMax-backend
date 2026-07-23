@@ -44,7 +44,7 @@ export const getPublicProducts = async (req, res) => {
       SELECT p.*, pt.company as partner_name, pt.store_name 
       FROM products p 
       JOIN partners pt ON p.partner_id = pt.id 
-      WHERE p.status = 'active' AND pt.status = 'approved'
+      WHERE p.status = 'active' AND pt.status = 'active'
       ORDER BY p.created_at DESC
     `);
     
@@ -59,7 +59,7 @@ export const getStoresByCategory = async (req, res) => {
   try {
     const { categoryName } = req.params;
     const [stores] = await db.execute(`
-      SELECT DISTINCT pt.id, pt.company, pt.store_name, pt.store_logo, pt.store_city as city 
+      SELECT DISTINCT pt.id, pt.company, pt.store_name, pt.store_logo, pt.store_city as city, pt.store_address 
       FROM partners pt 
       JOIN products p ON pt.id = p.partner_id 
       WHERE pt.status = 'active' AND p.status = 'active' AND p.category = ?
